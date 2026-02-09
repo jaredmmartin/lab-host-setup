@@ -101,21 +101,31 @@ The Ansible playbook applies the following configuration:
 ## Requirements
 
 - Ubuntu Linux 24.04
+- Ansible 1.16+
 
 ## Usage
 
+1. Install Ansible
+
+  ```sh
+  apt update
+  apt install software-properties-common
+  add-apt-repository --update ppa:ansible/ansible
+  apt install ansible
+  ```
+
 1. Set variable values in `vars/main.yml`:
-    1. `github_user_config_enable` (bool): Switch to enable global Git config setup
-    1. `github_user_name` (string): Git `user.name` to set
-    1. `github_user_email` (string): Git `user.email` to set
-    1. `nfs_mounts` (list): NFS shares to mount
-    1. `prometheus_exporter_enable` (bool): Switch to install and start Prometheus Node Exporter
-    1. `telegraf_syslog_enable` (bool): Switch to configure rsyslog forwarding to Telegraf
-    1. `telegraf_server_ip` (string): Telegraf server IP/host for rsyslog
-    1. `telegraf_server_port` (int): Telegraf syslog port
+    - `github_user_config_enable` (bool): Switch to enable global Git config setup
+    - `github_user_name` (string): Git `user.name` to set
+    - `github_user_email` (string): Git `user.email` to set
+    - `nfs_mounts` (list): NFS shares to mount
+    - `prometheus_exporter_enable` (bool): Switch to install and start Prometheus Node Exporter
+    - `telegraf_syslog_enable` (bool): Switch to configure rsyslog forwarding to Telegraf
+    - `telegraf_server_ip` (string): Telegraf server IP/host for rsyslog
+    - `telegraf_server_port` (int): Telegraf syslog port
 
 1. Apply the playbook
 
-    ```bash
+    ```sh
     sudo ansible-playbook main.yml
     ```
