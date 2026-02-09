@@ -1,0 +1,364 @@
+---
+- become: true
+  become_user: "root"
+  gather_facts: true
+  hosts: "localhost"
+
+  tasks:
+    - name: "os"
+      block:
+        - name: "os : populate service facts"
+          ansible.builtin.service_facts:
+
+        - name: "os : update packages"
+          ansible.builtin.apt:
+            autoclean: true
+            autoremove: true
+            name: "*"
+            state: "latest"
+
+        - name: "os : check reboot-required"
+          ansible.builtin.stat:
+            path: "/var/run/reboot-required"
+          register: reboot_required
+
+        - name: "os : reboot-required status"
+          ansible.builtin.debug:
+            msg: "reboot required!"
+          when: reboot_required.stat.exists
+
+    - name: "ansible"
+      block:
+        - name: "ansible : install ansible-lint"
+          ansible.builtin.apt:
+            name: "ansible-lint"
+            state: "present"
+            update_cache: true
+
+        - name: "ansible : collections"
+          community.general.ansible_galaxy_install:
+            name: "{{ item }}"
+            state: "latest"
+            type: "collection"
+          loop:
+            - "amazon.aws"
+            - "ansible.posix"
+            - "community.aws"
+            - "community.general"
+            - "community.windows"
+            - "kubernetes.core"
+            - "microsoft.ad"
+            - "netbox.netbox"
+
+    - name: "docker"
+      block:
+        - name: "docker : add signing key"
+          ansible.builtin.apt_key:
+            state: "present"
+            url: "https://download.docker.com/linux/ubuntu/gpg"
+
+        - name: "docker : add repository"
+          ansible.builtin.apt_repository:
+            filename: "docker"
+            repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+            state: "present"
+
+        - name: "docker : install"
+          ansible.builtin.apt:
+            name:
+              - "containerd.io"
+              - "docker-ce"
+              - "docker-ce-cli"
+              - "docker-compose-plugin"
+            state: "latest"
+            update_cache: true
+
+    - name: "git"
+      block:
+        - name: "git : install"
+          ansible.builtin.apt:
+            name: "git-all"
+            state: "present"
+            update_cache: true
+
+        - name: "git : set user.name"
+          ansible.builtin.command:
+            cmd: "git config --global user.name {{ github_user_name }}"
+          become: false
+          when: github_user_config_enable
+
+        - name: "git : set user.email"
+          ansible.builtin.command:
+            cmd: "git config --global user.email {{ github_user_email }}"
+          become: false
+          when: github_user_config_enable
+
+    - name: "hashicorp"
+      block:
+        - name: "hashicorp : add signing key"
+          ansible.builtin.apt_key:
+            state: "present"
+            url: "https://apt.releases.hashicorp.com/gpg"
+
+        - name: "hashicorp : add repository"
+          ansible.builtin.apt_repository:
+            repo: "deb https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+            state: "present"
+
+        - name: "hashicorp : packer"
+          block:
+            - name: "hashicorp : packer : install"
+              ansible.builtin.apt:
+                name: "packer"
+                state: "present"
+                update_cache: true
+
+            - name: "hashicorp : packer : install mkisofs"
+              ansible.builtin.apt:
+                name: "mkisofs"
+                state: "present"
+                update_cache: true
+
+        - name: "hashicorp : terraform"
+          block:
+            - name: "hashicorp : terraform : install"
+              ansible.builtin.apt:
+                name: "terraform"
+                state: "present"
+                update_cache: true
+
+        - name: "hashicorp : vagrant"
+          block:
+            - name: "hashicorp : vagrant : install"
+              ansible.builtin.apt:
+                name: "vagrant"
+                state: "present"
+                update_cache: true
+
+            - name: "hashicorp : vagrant : plugins"
+              ansible.builtin.shell: "{{ item }}"
+              loop:
+                - "vagrant plugin install vagrant-disksize"
+                - "vagrant plugin install vagrant-reload"
+                - "vagrant plugin install vagrant-vbguest"
+
+    - name: "nfs"
+      block:
+        - name: "nfs : install server"
+          ansible.builtin.apt:
+            name: "nfs-kernel-server"
+            state: "latest"
+            update_cache: true
+
+        - name: "nfs : install client"
+          ansible.builtin.apt:
+            name: "nfs-common"
+            state: "latest"
+            update_cache: true
+
+        - name: "nfs : mounts"
+          when: (nfs_mounts | default([]) | length) > 0
+          block:
+            - name: "nfs : mounts : create local path"
+              ansible.builtin.file:
+                path: "{{ item.nfs_local_path }}"
+                state: "directory"
+              loop: "{{ nfs_mounts }}"
+
+            - name: "nfs : mounts : mount"
+              ansible.posix.mount:
+                fstype: "nfs"
+                opts: "rw,sync,hard"
+                path: "{{ item.nfs_local_path }}"
+                src: "{{ item.nfs_server_ip }}:{{ item.nfs_remote_path }}"
+                state: "mounted"
+              loop: "{{ nfs_mounts }}"
+
+    - name: "openssh"
+      block:
+        - name: "openssh : install"
+          ansible.builtin.apt:
+            name: "openssh-server"
+            state: "present"
+            update_cache: true
+
+        - name: "openssh : create .ssh directory"
+          ansible.builtin.file:
+            group: "{{ ansible_user_id }}"
+            mode: "0700"
+            owner: "{{ ansible_user_id }}"
+            path: "~/.ssh"
+            state: "directory"
+          become: false
+          register: ssh_dir
+
+        - name: "openssh : generate keypair"
+          community.crypto.openssh_keypair:
+            path: "{{ ssh_dir.path }}/id_rsa"
+          become: false
+
+        - name: "openssh : add authorized key"
+          ansible.posix.authorized_key:
+            key: "{{ lookup('file', (ssh_dir.path + '/id_rsa')) }}"
+            state: "present"
+            user: "{{ ansible_user_id }}"
+          become: false
+
+    - name: "powershell"
+      block:
+        - name: "powershell : prerequisites"
+          ansible.builtin.apt:
+            name:
+              - "apt-transport-https"
+              - "ca-certificates"
+              - "curl"
+              - "software-properties-common"
+            state: "present"
+            update_cache: true
+
+        - name: "powershell : add signing key"
+          ansible.builtin.apt_key:
+            state: "present"
+            url: "https://packages.microsoft.com/keys/microsoft.asc"
+
+        - name: "powershell : download installer"
+          ansible.builtin.get_url:
+            url: "https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb"
+            dest: "/tmp/"
+          register: microsoft_repo_download
+
+        - name: "powershell : add repository"
+          ansible.builtin.apt_repository:
+            deb: "{{ microsoft_repo_download.dest }}"
+            state: "present"
+
+        - name: "powershell : add repository"
+          ansible.builtin.apt_repository:
+            repo: "deb https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb"
+            state: "present"
+
+        - name: "powershell : install"
+          ansible.builtin.apt:
+            name: "powershell"
+            state: "present"
+            update_cache: true
+
+    - name: "prometheus exporter"
+      when: prometheus_exporter_enable
+      block:
+        - name: "prometheus : download node exporter"
+          ansible.builtin.get_url:
+            url: "https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz"
+            dest: "/tmp/"
+          register: node_exporter_download
+
+        - name: "prometheus : extract"
+          ansible.builtin.unarchive:
+            dest: "/tmp/"
+            remote_src: true
+            src: "{{ node_exporter_download.dest }}"
+          register: node_exporter_extract
+
+        - name: "prometheus : set path fact"
+          ansible.builtin.set_fact:
+            node_exporter_installer: "{{ '/tmp/' + (node_exporter_extract.src | basename | regex_findall('(.*).tar.gz') | first) }}"
+
+        - name: "prometheus : copy binaries"
+          ansible.builtin.copy:
+            dest: "/usr/local/bin/node_exporter"
+            mode: "0755"
+            remote_src: true
+            src: "{{ node_exporter_installer }}/node_exporter"
+
+        - name: "prometheus : create service"
+          ansible.builtin.copy:
+            content: |
+              [Unit]
+              Description=Prometheus node exporter
+              Wants=network-online.target
+              After=network-online.target
+
+              [Service]
+              # User=prometheus
+              # Group=prometheus
+              Type=simple
+              ExecStart=/usr/local/bin/node_exporter
+
+              [Install]
+              WantedBy=multi-user.target
+            dest: "/etc/systemd/system/node_exporter.service"
+
+        - name: "prometheus : start"
+          ansible.builtin.service:
+            enabled: true
+            name: "node_exporter"
+            state: "started"
+
+    - name: "python"
+      block:
+        - name: "python : install dependencies"
+          ansible.builtin.apt:
+            name:
+              - "build-essential"
+              - "libbz2-dev"
+              - "libc6-dev"
+              - "libffi-dev"
+              - "libgdbm-dev"
+              - "libncursesw5-dev"
+              - "libsqlite3-dev"
+              - "libssl-dev"
+              - "tk-dev"
+              - "wget"
+              - "zlib1g-dev"
+            state: "present"
+            update_cache: true
+
+        - name: "python : add repository"
+          ansible.builtin.apt_repository:
+            repo: "ppa:deadsnakes/ppa"
+            state: "present"
+
+        - name: "python : install"
+          ansible.builtin.apt:
+            name:
+              - "python3.12"
+              - "python3-pip"
+              - "python3-passlib"
+            state: "present"
+            update_cache: true
+
+    - name: "rsyslog"
+      when: telegraf_syslog_enable
+      block:
+        - name: "rsyslog : template config"
+          ansible.builtin.copy:
+            dest: "/etc/rsyslog.d/50-telegraf.conf"
+            group: "root"
+            mode: "0644"
+            owner: "root"
+            src: "templates/50-telegraf.conf"
+          register: rsyslog_conf
+
+        - name: "rsyslog : restart rsyslog"
+          ansible.builtin.systemd_service:
+            name: "rsyslog"
+            state: "restarted"
+          when: rsyslog_conf.changed
+
+    - name: "virtualbox"
+      block:
+        - name: "virtualbox : add signing key"
+          ansible.builtin.apt_key:
+            state: "present"
+            url: "https://www.virtualbox.org/download/oracle_vbox_2016.asc"
+
+        - name: "virtualbox : add repository"
+          ansible.builtin.apt_repository:
+            repo: "deb https://download.virtualbox.org/virtualbox/debian {{ ansible_distribution_release }} contrib"
+            state: "present"
+
+        - name: "virtualbox : install"
+          ansible.builtin.apt:
+            name: "virtualbox-7.0"
+            state: "present"
+            update_cache: true

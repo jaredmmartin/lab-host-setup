@@ -1,0 +1,19 @@
+---
+# GitHub user information
+github_user_config_enable: false
+github_user_email: ""
+github_user_name: ""
+
+# List of NFS mounts
+nfs_mounts:
+  - nfs_server_ip: ""
+    nfs_local_path: ""
+    nfs_remote_path: ""
+
+# Prometheus exporter configuration
+prometheus_exporter_enable: false
+
+# Telegraf configuration
+telegraf_server_ip: ""
+telegraf_server_port: ""
+telegraf_syslog_enable: false
