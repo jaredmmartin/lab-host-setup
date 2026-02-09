@@ -3,6 +3,8 @@
   become_user: "root"
   gather_facts: true
   hosts: "localhost"
+  vars_files:
+    - "vars/main.yml"
 
   tasks:
     - name: "os"
@@ -15,6 +17,12 @@
             autoclean: true
             autoremove: true
             name: "*"
+            state: "latest"
+            update_cache: true
+
+        - name: "os : install ubuntu desktop"
+          ansible.builtin.apt:
+            name: "ubuntu-desktop"
             state: "latest"
 
         - name: "os : check reboot-required"
@@ -60,7 +68,7 @@
         - name: "docker : add repository"
           ansible.builtin.apt_repository:
             filename: "docker"
-            repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+            repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
             state: "present"
 
         - name: "docker : install"
@@ -102,7 +110,7 @@
 
         - name: "hashicorp : add repository"
           ansible.builtin.apt_repository:
-            repo: "deb https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+            repo: "deb https://apt.releases.hashicorp.com {{ ansible_facts['distribution_release'] }} main"
             state: "present"
 
         - name: "hashicorp : packer"
@@ -184,9 +192,9 @@
 
         - name: "openssh : create .ssh directory"
           ansible.builtin.file:
-            group: "{{ ansible_user_id }}"
+            group: "{{ ansible_facts['user_id'] }}"
             mode: "0700"
-            owner: "{{ ansible_user_id }}"
+            owner: "{{ ansible_facts['user_id'] }}"
             path: "~/.ssh"
             state: "directory"
           become: false
@@ -195,13 +203,6 @@
         - name: "openssh : generate keypair"
           community.crypto.openssh_keypair:
             path: "{{ ssh_dir.path }}/id_rsa"
-          become: false
-
-        - name: "openssh : add authorized key"
-          ansible.posix.authorized_key:
-            key: "{{ lookup('file', (ssh_dir.path + '/id_rsa')) }}"
-            state: "present"
-            user: "{{ ansible_user_id }}"
           become: false
 
     - name: "powershell"
@@ -221,20 +222,9 @@
             state: "present"
             url: "https://packages.microsoft.com/keys/microsoft.asc"
 
-        - name: "powershell : download installer"
-          ansible.builtin.get_url:
-            url: "https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb"
-            dest: "/tmp/"
-          register: microsoft_repo_download
-
         - name: "powershell : add repository"
-          ansible.builtin.apt_repository:
-            deb: "{{ microsoft_repo_download.dest }}"
-            state: "present"
-
-        - name: "powershell : add repository"
-          ansible.builtin.apt_repository:
-            repo: "deb https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb"
+          ansible.builtin.apt:
+            deb: "https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb"
             state: "present"
 
         - name: "powershell : install"
@@ -354,7 +344,7 @@
 
         - name: "virtualbox : add repository"
           ansible.builtin.apt_repository:
-            repo: "deb https://download.virtualbox.org/virtualbox/debian {{ ansible_distribution_release }} contrib"
+            repo: "deb https://download.virtualbox.org/virtualbox/debian {{ ansible_facts['distribution_release'] }} contrib"
             state: "present"
 
         - name: "virtualbox : install"
